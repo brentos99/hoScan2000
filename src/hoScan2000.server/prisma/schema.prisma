@@ -19,6 +19,25 @@ model Store {
 
   barcodeMaster BarcodeMaster[]
   stocktakes    Stocktake[]
+  areas         StoreArea[]
+}
+
+// Template areas defined at store level
+model StoreArea {
+  id          String   @id @default(uuid())
+  storeId     String
+  name        String
+  code        String   // Short code like "A1"
+  description String?
+  sortOrder   Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@unique([storeId, code])
+  @@index([storeId])
 }
 
 // Barcode master file entries for validation

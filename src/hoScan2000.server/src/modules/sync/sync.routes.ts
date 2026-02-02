@@ -6,7 +6,7 @@ const pushSyncSchema = z.object({
   deviceId: z.string().uuid(),
   items: z.array(
     z.object({
-      action: z.enum(['SCAN', 'DELETE_SCAN', 'UPDATE_SCAN']),
+      action: z.enum(['SCAN', 'DELETE_SCAN', 'UPDATE_SCAN', 'COMPLETE_AREA']),
       idempotencyKey: z.string(),
       payload: z.any(),
     })
@@ -97,6 +97,43 @@ export const syncRoutes: FastifyPluginAsync = async (server) => {
               where: { localId: updateData.localId },
               data: { quantity: updateData.quantity },
             });
+            break;
+          }
+
+          case 'COMPLETE_AREA': {
+            const completeData = item.payload as {
+              stocktakeId: string;
+              areaId: string;
+            };
+
+            // Verify device has this area claimed
+            const session = await prisma.deviceSession.findFirst({
+              where: {
+                deviceId,
+                stocktakeId: completeData.stocktakeId,
+                claimedAreaId: completeData.areaId,
+              },
+            });
+
+            // Update area status and release from device
+            await prisma.$transaction([
+              prisma.stocktakeArea.update({
+                where: { id: completeData.areaId },
+                data: {
+                  status: 'COMPLETED',
+                  completedAt: new Date(),
+                },
+              }),
+              // Release the area from the device session (if claimed)
+              ...(session
+                ? [
+                    prisma.deviceSession.update({
+                      where: { id: session.id },
+                      data: { claimedAreaId: null },
+                    }),
+                  ]
+                : []),
+            ]);
             break;
           }
         }

@@ -9,6 +9,7 @@ const createStocktakeSchema = z.object({
   pin: z.string().min(4).max(6).regex(/^\d+$/, 'PIN must be numeric'),
   scheduledDate: z.string().datetime().optional(),
   notes: z.string().optional(),
+  areaIds: z.array(z.string().uuid()).optional(), // Store area IDs to include
 });
 
 const joinStocktakeSchema = z.object({
@@ -81,15 +82,31 @@ export const stocktakeRoutes: FastifyPluginAsync = async (server) => {
       return reply.status(400).send({ error: 'Invalid input', details: parsed.error.flatten() });
     }
 
+    const { areaIds, ...stocktakeData } = parsed.data;
+
     // Verify store exists
-    const store = await prisma.store.findUnique({ where: { id: parsed.data.storeId } });
+    const store = await prisma.store.findUnique({ where: { id: stocktakeData.storeId } });
     if (!store) {
       return reply.status(400).send({ error: 'Store not found' });
     }
 
+    // Get store areas to copy (if areaIds provided)
+    let storeAreas: { name: string; code: string; description: string | null; sortOrder: number }[] = [];
+    if (areaIds && areaIds.length > 0) {
+      storeAreas = await prisma.storeArea.findMany({
+        where: {
+          id: { in: areaIds },
+          storeId: stocktakeData.storeId,
+          isActive: true,
+        },
+        orderBy: { sortOrder: 'asc' },
+        select: { name: true, code: true, description: true, sortOrder: true },
+      });
+    }
+
     // Compute current master file version
     const masterItems = await prisma.barcodeMaster.findMany({
-      where: { storeId: parsed.data.storeId, isActive: true },
+      where: { storeId: stocktakeData.storeId, isActive: true },
       select: { barcode: true },
     });
     const masterVersion = createHash('sha256')
@@ -97,14 +114,28 @@ export const stocktakeRoutes: FastifyPluginAsync = async (server) => {
       .digest('hex')
       .slice(0, 16);
 
+    // Create stocktake with areas in a transaction
     const stocktake = await prisma.stocktake.create({
       data: {
-        ...parsed.data,
-        scheduledDate: parsed.data.scheduledDate ? new Date(parsed.data.scheduledDate) : null,
+        ...stocktakeData,
+        scheduledDate: stocktakeData.scheduledDate ? new Date(stocktakeData.scheduledDate) : null,
         masterFileVersion: masterVersion,
+        // Create stocktake areas from store area templates
+        areas: storeAreas.length > 0
+          ? {
+              create: storeAreas.map((area, index) => ({
+                name: area.name,
+                code: area.code,
+                description: area.description,
+                sortOrder: area.sortOrder || index,
+              })),
+            }
+          : undefined,
       },
       include: {
         store: { select: { id: true, name: true, code: true } },
+        areas: { orderBy: { sortOrder: 'asc' } },
+        _count: { select: { areas: true } },
       },
     });
 

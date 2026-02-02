@@ -106,10 +106,12 @@ export const scanRoutes: FastifyPluginAsync = async (server) => {
   // Get scans for stocktake (paginated)
   server.get<{
     Params: { id: string };
-    Querystring: { areaId?: string; deviceId?: string; limit?: number; offset?: number };
+    Querystring: { areaId?: string; deviceId?: string; limit?: string; offset?: string };
   }>('/:id/scans', async (request) => {
     const { id } = request.params;
-    const { areaId, deviceId, limit = 100, offset = 0 } = request.query;
+    const { areaId, deviceId, limit: limitStr, offset: offsetStr } = request.query;
+    const limit = limitStr ? parseInt(limitStr, 10) : 100;
+    const offset = offsetStr ? parseInt(offsetStr, 10) : 0;
 
     const where = {
       stocktakeId: id,

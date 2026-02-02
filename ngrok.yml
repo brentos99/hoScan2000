@@ -1,0 +1,8 @@
+version: "2"
+tunnels:
+  server:
+    addr: 3000
+    proto: http
+  expo:
+    addr: 8081
+    proto: http

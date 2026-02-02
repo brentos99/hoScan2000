@@ -125,9 +125,9 @@ export default function StocktakeDetail() {
               </button>
             </>
           )}
-          {stocktake.status === 'COMPLETED' && (
-            <a href={api.exportCsv(id!)} className="btn btn-primary" download>
-              Export CSV
+          {(summary?.totalScans ?? 0) > 0 && (
+            <a href={api.exportCsv(id!)} className="btn btn-secondary" download>
+              Download Scans (CSV)
             </a>
           )}
         </div>

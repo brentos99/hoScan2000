@@ -21,9 +21,27 @@ async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<T> 
 export const api = {
   // Stores
   getStores: () => fetchApi<{ stores: Store[] }>('/stores'),
+  getStore: (id: string) => fetchApi<{ store: Store }>(`/stores/${id}`),
   createStore: (data: CreateStoreInput) =>
     fetchApi<{ store: Store }>('/stores', { method: 'POST', body: JSON.stringify(data) }),
+  updateStore: (id: string, data: Partial<CreateStoreInput>) =>
+    fetchApi<{ store: Store }>(`/stores/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
   deleteStore: (id: string) => fetchApi(`/stores/${id}`, { method: 'DELETE' }),
+
+  // Store Areas
+  getStoreAreas: (storeId: string) => fetchApi<{ areas: StoreArea[] }>(`/stores/${storeId}/areas`),
+  createStoreArea: (storeId: string, data: CreateStoreAreaInput) =>
+    fetchApi<{ area: StoreArea }>(`/stores/${storeId}/areas`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  updateStoreArea: (storeId: string, areaId: string, data: Partial<CreateStoreAreaInput>) =>
+    fetchApi<{ area: StoreArea }>(`/stores/${storeId}/areas/${areaId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+  deleteStoreArea: (storeId: string, areaId: string) =>
+    fetchApi(`/stores/${storeId}/areas/${areaId}`, { method: 'DELETE' }),
 
   // Stocktakes
   getStocktakes: (status?: string) =>
@@ -80,12 +98,31 @@ export interface Store {
   address?: string;
   timezone: string;
   createdAt: string;
+  areas?: StoreArea[];
+  _count?: { barcodeMaster: number; stocktakes: number; areas: number };
 }
 
 export interface CreateStoreInput {
   name: string;
   code: string;
   address?: string;
+}
+
+export interface StoreArea {
+  id: string;
+  storeId: string;
+  name: string;
+  code: string;
+  description?: string;
+  sortOrder: number;
+  isActive: boolean;
+}
+
+export interface CreateStoreAreaInput {
+  name: string;
+  code: string;
+  description?: string;
+  sortOrder?: number;
 }
 
 export interface Stocktake {
@@ -110,6 +147,7 @@ export interface CreateStocktakeInput {
   pin: string;
   scheduledDate?: string;
   notes?: string;
+  areaIds?: string[];
 }
 
 export interface Area {

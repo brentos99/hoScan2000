@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { api, Store, Stocktake } from '../api';
+import { api, Store, Stocktake, StoreArea } from '../api';
 
 export default function Stocktakes() {
   const [stocktakes, setStocktakes] = useState<Stocktake[]>([]);
@@ -10,6 +10,11 @@ export default function Stocktakes() {
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState({ storeId: '', name: '', pin: '', notes: '' });
   const [saving, setSaving] = useState(false);
+
+  // Area selection
+  const [storeAreas, setStoreAreas] = useState<StoreArea[]>([]);
+  const [selectedAreaIds, setSelectedAreaIds] = useState<string[]>([]);
+  const [loadingAreas, setLoadingAreas] = useState(false);
 
   const loadData = () => {
     Promise.all([api.getStocktakes(filter), api.getStores()])
@@ -24,13 +29,51 @@ export default function Stocktakes() {
     loadData();
   }, [filter]);
 
+  // Load areas when store is selected
+  const handleStoreChange = async (storeId: string) => {
+    setForm({ ...form, storeId });
+    setSelectedAreaIds([]);
+    setStoreAreas([]);
+
+    if (storeId) {
+      setLoadingAreas(true);
+      try {
+        const res = await api.getStoreAreas(storeId);
+        setStoreAreas(res.areas);
+        // Select all areas by default
+        setSelectedAreaIds(res.areas.map((a) => a.id));
+      } finally {
+        setLoadingAreas(false);
+      }
+    }
+  };
+
+  const toggleArea = (areaId: string) => {
+    setSelectedAreaIds((prev) =>
+      prev.includes(areaId) ? prev.filter((id) => id !== areaId) : [...prev, areaId]
+    );
+  };
+
+  const selectAllAreas = () => {
+    setSelectedAreaIds(storeAreas.map((a) => a.id));
+  };
+
+  const selectNoneAreas = () => {
+    setSelectedAreaIds([]);
+  };
+
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
     try {
-      await api.createStocktake(form);
+      await api.createStocktake({
+        ...form,
+        areaIds: selectedAreaIds.length > 0 ? selectedAreaIds : undefined,
+      });
       setShowModal(false);
       setForm({ storeId: '', name: '', pin: '', notes: '' });
+      setStoreAreas([]);
+      setSelectedAreaIds([]);
       loadData();
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Failed to create');
@@ -129,14 +172,14 @@ export default function Stocktakes() {
 
       {showModal && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
+          <div className="modal modal-lg" onClick={(e) => e.stopPropagation()}>
             <h2>New Stocktake</h2>
             <form onSubmit={handleCreate}>
               <div className="form-group">
                 <label>Store</label>
                 <select
                   value={form.storeId}
-                  onChange={(e) => setForm({ ...form, storeId: e.target.value })}
+                  onChange={(e) => handleStoreChange(e.target.value)}
                   required
                 >
                   <option value="">Select store...</option>
@@ -147,6 +190,54 @@ export default function Stocktakes() {
                   ))}
                 </select>
               </div>
+
+              {form.storeId && (
+                <div className="form-group">
+                  <label>
+                    Areas to Include
+                    {storeAreas.length > 0 && (
+                      <span className="text-muted text-sm" style={{ marginLeft: '0.5rem' }}>
+                        ({selectedAreaIds.length} of {storeAreas.length} selected)
+                      </span>
+                    )}
+                  </label>
+                  {loadingAreas ? (
+                    <div className="text-muted">Loading areas...</div>
+                  ) : storeAreas.length === 0 ? (
+                    <div className="text-muted">
+                      No areas configured for this store.{' '}
+                      <Link to="/stores">Configure areas</Link>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex gap-2 mb-2">
+                        <button type="button" className="btn btn-secondary btn-sm" onClick={selectAllAreas}>
+                          Select All
+                        </button>
+                        <button type="button" className="btn btn-secondary btn-sm" onClick={selectNoneAreas}>
+                          Select None
+                        </button>
+                      </div>
+                      <div className="area-grid">
+                        {storeAreas.map((area) => (
+                          <label key={area.id} className="area-checkbox">
+                            <input
+                              type="checkbox"
+                              checked={selectedAreaIds.includes(area.id)}
+                              onChange={() => toggleArea(area.id)}
+                            />
+                            <span className="area-info">
+                              <strong>{area.code}</strong>
+                              <span>{area.name}</span>
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+
               <div className="form-group">
                 <label>Stocktake Name</label>
                 <input
@@ -196,6 +287,52 @@ export default function Stocktakes() {
           </div>
         </div>
       )}
+
+      <style>{`
+        .modal-lg {
+          max-width: 600px;
+        }
+        .area-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+          gap: 0.5rem;
+          max-height: 200px;
+          overflow-y: auto;
+          border: 1px solid #ddd;
+          border-radius: 4px;
+          padding: 0.5rem;
+        }
+        .area-checkbox {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          padding: 0.5rem;
+          background: #f9f9f9;
+          border-radius: 4px;
+          cursor: pointer;
+        }
+        .area-checkbox:hover {
+          background: #f0f0f0;
+        }
+        .area-checkbox input {
+          margin: 0;
+        }
+        .area-info {
+          display: flex;
+          flex-direction: column;
+          line-height: 1.2;
+        }
+        .area-info strong {
+          font-size: 0.9rem;
+        }
+        .area-info span {
+          font-size: 0.8rem;
+          color: #666;
+        }
+        .mb-2 {
+          margin-bottom: 0.5rem;
+        }
+      `}</style>
     </div>
   );
 }
