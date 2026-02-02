@@ -2,6 +2,10 @@ import Fastify, { FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
 import compress from '@fastify/compress';
 import rateLimit from '@fastify/rate-limit';
+import fastifyStatic from '@fastify/static';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+import { existsSync } from 'fs';
 import { config } from './config/index.js';
 
 // Import routes
@@ -12,6 +16,9 @@ import { areaRoutes } from './modules/areas/areas.routes.js';
 import { scanRoutes } from './modules/scans/scans.routes.js';
 import { deviceRoutes } from './modules/devices/devices.routes.js';
 import { syncRoutes } from './modules/sync/sync.routes.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 export async function buildServer(): Promise<FastifyInstance> {
   const server = Fastify({
@@ -59,6 +66,23 @@ export async function buildServer(): Promise<FastifyInstance> {
     },
     { prefix: '/api/v1' }
   );
+
+  // Serve static files from public folder (built admin UI)
+  const publicPath = join(__dirname, '..', 'public');
+  if (existsSync(publicPath)) {
+    await server.register(fastifyStatic, {
+      root: publicPath,
+      prefix: '/',
+    });
+
+    // SPA fallback - serve index.html for all non-API routes
+    server.setNotFoundHandler((request, reply) => {
+      if (!request.url.startsWith('/api/')) {
+        return reply.sendFile('index.html');
+      }
+      return reply.status(404).send({ error: 'Not found' });
+    });
+  }
 
   return server;
 }

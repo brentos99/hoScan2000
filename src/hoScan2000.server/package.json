@@ -6,18 +6,21 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch --env-file=.env src/index.ts",
-    "build": "tsc",
+    "build": "npm run build:web && tsc",
+    "build:web": "cd web && npm install && npm run build",
     "start": "node --env-file=.env dist/index.js",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",
     "db:studio": "prisma studio",
-    "db:seed": "tsx --env-file=.env prisma/seed.ts"
+    "db:seed": "tsx --env-file=.env prisma/seed.ts",
+    "web:dev": "cd web && npm run dev"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.1",
     "@fastify/compress": "^8.0.1",
     "@fastify/rate-limit": "^10.2.1",
+    "@fastify/static": "^8.0.3",
     "@fastify/websocket": "^11.0.1",
     "@prisma/client": "^6.2.1",
     "fastify": "^5.2.1",
