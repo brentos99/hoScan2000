@@ -1,0 +1,186 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Store/warehouse location
+model Store {
+  id        String   @id @default(uuid())
+  name      String
+  code      String   @unique // Short code like "WH01"
+  address   String?
+  timezone  String   @default("UTC")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  barcodeMaster BarcodeMaster[]
+  stocktakes    Stocktake[]
+}
+
+// Barcode master file entries for validation
+model BarcodeMaster {
+  id          String   @id @default(uuid())
+  storeId     String
+  barcode     String
+  sku         String
+  description String?
+  category    String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@unique([storeId, barcode])
+  @@index([storeId])
+  @@index([barcode])
+}
+
+enum StocktakeStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  COMPLETED
+  CANCELLED
+}
+
+// A stocktake job
+model Stocktake {
+  id                String          @id @default(uuid())
+  storeId           String
+  name              String
+  pin               String          // 4-6 digit PIN to join
+  status            StocktakeStatus @default(DRAFT)
+  scheduledDate     DateTime?
+  startedAt         DateTime?
+  completedAt       DateTime?
+  notes             String?
+  masterFileVersion String?         // Hash of master file at time of creation
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  store    Store           @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  areas    StocktakeArea[]
+  sessions DeviceSession[]
+  scans    Scan[]
+
+  @@index([storeId])
+  @@index([status])
+  @@index([pin])
+}
+
+enum AreaStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  LOCKED
+}
+
+// Sections within a stocktake
+model StocktakeArea {
+  id          String     @id @default(uuid())
+  stocktakeId String
+  name        String
+  code        String     // Short code like "A1"
+  description String?
+  status      AreaStatus @default(PENDING)
+  sortOrder   Int        @default(0)
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  stocktake      Stocktake       @relation(fields: [stocktakeId], references: [id], onDelete: Cascade)
+  claimedBy      DeviceSession?  @relation("ClaimedArea")
+  scans          Scan[]
+
+  @@unique([stocktakeId, code])
+  @@index([stocktakeId])
+}
+
+// Registered scanning device
+model Device {
+  id               String    @id @default(uuid())
+  deviceIdentifier String    @unique // Hardware ID from device
+  name             String              // User-friendly name
+  platform         String    @default("android")
+  lastSeenAt       DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  sessions DeviceSession[]
+  scans    Scan[]
+}
+
+enum SessionStatus {
+  ACTIVE
+  PAUSED
+  COMPLETED
+  DISCONNECTED
+}
+
+// Device session within a stocktake
+model DeviceSession {
+  id             String        @id @default(uuid())
+  stocktakeId    String
+  deviceId       String
+  claimedAreaId  String?       @unique // Currently claimed area
+  status         SessionStatus @default(ACTIVE)
+  joinedAt       DateTime      @default(now())
+  lastActivityAt DateTime      @default(now())
+  disconnectedAt DateTime?
+  scansCount     Int           @default(0)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  stocktake   Stocktake      @relation(fields: [stocktakeId], references: [id], onDelete: Cascade)
+  device      Device         @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  claimedArea StocktakeArea? @relation("ClaimedArea", fields: [claimedAreaId], references: [id])
+
+  @@unique([stocktakeId, deviceId])
+  @@index([stocktakeId])
+  @@index([deviceId])
+}
+
+// Individual barcode scan
+model Scan {
+  id                String   @id @default(uuid())
+  localId           String   @unique // Client-generated UUID for dedup
+  stocktakeId       String
+  areaId            String
+  deviceId          String
+  barcode           String
+  quantity          Int      @default(1)
+  isValid           Boolean  @default(true) // Matched master file?
+  validationMessage String?  // e.g., "Unknown barcode"
+  scannedAt         DateTime
+  syncedAt          DateTime @default(now())
+  createdAt         DateTime @default(now())
+
+  stocktake Stocktake     @relation(fields: [stocktakeId], references: [id], onDelete: Cascade)
+  area      StocktakeArea @relation(fields: [areaId], references: [id], onDelete: Cascade)
+  device    Device        @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([stocktakeId])
+  @@index([areaId])
+  @@index([deviceId])
+  @@index([barcode])
+  @@index([scannedAt])
+}
+
+// Sync log for debugging
+model SyncLog {
+  id           String   @id @default(uuid())
+  deviceId     String?
+  stocktakeId  String?
+  action       String
+  recordCount  Int      @default(0)
+  status       String   // SUCCESS, PARTIAL, FAILED
+  errorMessage String?
+  startedAt    DateTime @default(now())
+  completedAt  DateTime?
+}
